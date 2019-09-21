@@ -36,7 +36,6 @@ class FEVERTextClassificationModel(Model):
         # Initialize weights
         initializer(self)
 
-
     def forward(self,
                 claim: Dict[str, torch.LongTensor],
                 evidence: Dict[str, torch.LongTensor],
@@ -71,28 +70,40 @@ class FEVERTextClassificationModel(Model):
             A scalar loss to be optimised.
         """
 
+        embedded_claim = self._embedder(claim)
+        embedded_evidence = self._embedder(evidence)
 
-        # TODO - Delete this line when you start working on your solution
-        raise NotImplementedError("Compute label logits (for supported and refuted) for the given Claim and Evidence input")
+        summed_claim_T = embedded_claim.sum(dim=1).transpose(0, 1)
+        text_field_mask_claim = get_text_field_mask(claim).float()
+        claim_length_tensor = torch.sum(text_field_mask_claim, dim=1)
+        avg_claim = torch.div(summed_claim_T, claim_length_tensor)
+        avg_claim = avg_claim.transpose(0, 1)
 
-        # TODO - Uncomment the code below
+        summed_evidence_T = embedded_evidence.sum(dim=1).transpose(0, 1)
+        text_field_mask_evidence = get_text_field_mask(evidence).float()
+        evidence_length_tensor = torch.sum(text_field_mask_evidence, dim=1)
+        avg_evidence = torch.div(summed_evidence_T, evidence_length_tensor)
+        avg_evidence = avg_evidence.transpose(0, 1)
 
-        #label_logits = # TODO compute label logits for input
-        #label_probs = F.softmax(label_logits, dim=-1)
+        input_embeddings = torch.cat((avg_claim, avg_evidence), dim=1)
 
-        #output_dict = {"label_logits": label_logits,
-        #               "label_probs": label_probs}
+        label_logits = self._feed_forward(input_embeddings)
 
-        #if label is not None:
-        #    loss = self._loss(label_logits, label.long().view(-1))
-        #    self._accuracy(label_logits, label)
-        #    output_dict["loss"] = loss
+        label_probs = F.softmax(label_logits, dim=-1)
 
-        #if metadata is not None:
-        #    output_dict["claim_tokens"] = [x["claim_tokens"] for x in metadata]
-        #    output_dict["evidence_tokens"] = [x["evidence_tokens"] for x in metadata]
+        output_dict = {"label_logits": label_logits,
+                      "label_probs": label_probs}
 
-        #return output_dict
+        if label is not None:
+           loss = self._loss(label_logits, label.long().view(-1))
+           self._accuracy(label_logits, label)
+           output_dict["loss"] = loss
+
+        if metadata is not None:
+           output_dict["claim_tokens"] = [x["claim_tokens"] for x in metadata]
+           output_dict["evidence_tokens"] = [x["evidence_tokens"] for x in metadata]
+
+        return output_dict
 
     def get_metrics(self, reset: bool = False) -> Dict[str, float]:
         return {
