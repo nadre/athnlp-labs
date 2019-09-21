@@ -86,31 +86,24 @@ def calculate_dotproducts(word_vector, weight_vectors):
 
 def train(sentences, labels, weight_vectors):
     for feature_vectors, label_vectors in zip(sentences, labels):
-        true_label_sequence = []
-        predicted_label_sequence = []
         previous_label_idx = None
         weight_updates = np.zeros_like(weight_vectors)
         for i in range(len(feature_vectors)):
             feature_vector = feature_vectors[i]
+            label_vec = label_vectors[i]
 
             if previous_label_idx:
                 feature_vector[previous_label_idx] = 1
 
-            label_vec = label_vectors[i]
-
             predicted_label_idx = predict(feature_vector, weight_vectors)
-
-            # tricky
-            previous_label_idx = len(feature_vector) - len(label_vec) + predicted_label_idx
-
-            predicted_label_sequence.append(predicted_label_idx)
-
             true_label_idx = np.argmax(label_vec)
-            true_label_sequence.append(true_label_idx)
 
-            if predicted_label_sequence is not true_label_sequence:
+            if predicted_label_idx is not true_label_idx:
                 weight_updates[predicted_label_idx] -= feature_vector
                 weight_updates[true_label_idx] += feature_vector
+
+            # update previous_label_idx, tricky
+            previous_label_idx = len(feature_vector) - len(label_vec) + predicted_label_idx
 
         batch_size = len(feature_vectors)
         weight_vectors += weight_updates / batch_size
