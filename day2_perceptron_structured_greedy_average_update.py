@@ -14,8 +14,13 @@ def extract_word_features(word):
 
     feature_functions = [
         lambda w: w.endswith('ed'),
+        lambda w: w.endswith('able'),
+        lambda w: w.endswith('ing'),
         lambda w: w.isdigit(),
         lambda w: w[0].isupper(),
+        lambda w: w[-1].isupper(),
+        lambda w: w.isupper(),
+        lambda w: len(w) > 5
         # get creative!
     ]
 
@@ -84,6 +89,7 @@ def train(sentences, labels, weight_vectors):
         true_label_sequence = []
         predicted_label_sequence = []
         previous_label_idx = None
+        weight_updates = np.zeros_like(weight_vectors)
         for i in range(len(feature_vectors)):
             feature_vector = feature_vectors[i]
 
@@ -103,8 +109,11 @@ def train(sentences, labels, weight_vectors):
             true_label_sequence.append(true_label_idx)
 
             if predicted_label_sequence is not true_label_sequence:
-                weight_vectors[predicted_label_idx] -= feature_vector
-                weight_vectors[true_label_idx] += feature_vector
+                weight_updates[predicted_label_idx] -= feature_vector
+                weight_updates[true_label_idx] += feature_vector
+
+        batch_size = len(feature_vectors)
+        weight_vectors += weight_updates / batch_size
 
     return weight_vectors
 
@@ -118,33 +127,33 @@ def calculate_accuracy(sentences, labels, weight_vectors):
     return accuracy_score(all_predictions, all_true_labels)
 
 
-def run_evaluation(train_word_vecs, train_label_vecs, test_word_vecs, test_label_vecs):
+def run_evaluation(train_word_vecs, train_label_vecs, test_word_vecs, test_label_vecs, epochs=10):
     num_features = len(train_word_vecs[0][0])
     num_labels = len(train_label_vecs[0][0])
     
-    print('train on train, test on test')
-    train_weights = [np.zeros(num_features) for _ in range(num_labels)]
-    for epoch in range(4):
-        train_weights = train(train_word_vecs, train_label_vecs, train_weights)
-        accuracy = calculate_accuracy(test_word_vecs, test_label_vecs, train_weights)
-        print(epoch, accuracy)
-
-    print('train on train, test on test, randomize order')
-    train_weights = [np.zeros(num_features) for _ in range(num_labels)]
-
-    zipped_samples = zip(train_word_vecs, train_label_vecs)
-    random_zipped_samples = sorted(zipped_samples, key=lambda k: random.random())
-    train_word_vecs_random, train_label_vecs_random = zip(*random_zipped_samples)
-
-    for epoch in range(4):
-        train_weights = train(train_word_vecs_random, train_label_vecs_random, train_weights)
-        accuracy = calculate_accuracy(test_word_vecs, test_label_vecs, train_weights)
-        print(epoch, accuracy)
+    # print('train on train, test on test')
+    # train_weights = [np.zeros(num_features) for _ in range(num_labels)]
+    # for epoch in range(4):
+    #     train_weights = train(train_word_vecs, train_label_vecs, train_weights)
+    #     accuracy = calculate_accuracy(test_word_vecs, test_label_vecs, train_weights)
+    #     print(epoch, accuracy)
+    #
+    # print('train on train, test on test, randomize order')
+    # train_weights = [np.zeros(num_features) for _ in range(num_labels)]
+    #
+    # zipped_samples = zip(train_word_vecs, train_label_vecs)
+    # random_zipped_samples = sorted(zipped_samples, key=lambda k: random.random())
+    # train_word_vecs_random, train_label_vecs_random = zip(*random_zipped_samples)
+    #
+    # for epoch in range(4):
+    #     train_weights = train(train_word_vecs_random, train_label_vecs_random, train_weights)
+    #     accuracy = calculate_accuracy(test_word_vecs, test_label_vecs, train_weights)
+    #     print(epoch, accuracy)
         
     print('train on train, test on test, randomize order, each epoch')
     train_weights = [np.zeros(num_features) for _ in range(num_labels)]
 
-    for epoch in range(4):
+    for epoch in range(epochs):
 
         zipped_samples = zip(train_word_vecs, train_label_vecs)
         random_zipped_samples = sorted(zipped_samples, key=lambda k: random.random())
@@ -155,9 +164,10 @@ def run_evaluation(train_word_vecs, train_label_vecs, test_word_vecs, test_label
         print(epoch, accuracy)
 
 
-corpus = BrownPosTag()
-cutoff = 500
-test_sentences, test_labels = prepare_data(corpus.test, cutoff=cutoff)
-train_sentences, train_labels = prepare_data(corpus.train, cutoff=cutoff)
-run_evaluation(train_sentences, train_labels, test_sentences, test_labels)
+if __name__ == '__main__':
+    corpus = BrownPosTag()
+    cutoff = None
+    test_sentences, test_labels = prepare_data(corpus.test, cutoff=cutoff)
+    train_sentences, train_labels = prepare_data(corpus.train, cutoff=cutoff)
+    run_evaluation(train_sentences, train_labels, test_sentences, test_labels)
 
