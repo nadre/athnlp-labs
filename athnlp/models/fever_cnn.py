@@ -30,8 +30,13 @@ class FEVERTextClassificationModel(Model):
         self._embedder = text_field_embedder
         self._feed_forward = final_feedforward
 
-        self._cnn_claim_encoder = CnnEncoder(embedding_dim=self._embedder.get_output_dim(), num_filters=2)
-        self._cnn_evidence_encoder = CnnEncoder(embedding_dim=self._embedder.get_output_dim(), num_filters=2)
+        self._cnn_claim_encoder = CnnEncoder(embedding_dim=self._embedder.get_output_dim(), num_filters=100)
+        self._cnn_evidence_encoder = CnnEncoder(embedding_dim=self._embedder.get_output_dim(), num_filters=100)
+
+        self._static_feedforward_dimension = 300
+        self._static_feedforward = FeedForward(input_dim=self._cnn_claim_encoder.get_output_dim()*2,
+                                               hidden_dims=self._static_feedforward_dimension,
+                                               num_layers=1, activations=Activation.by_name('relu')())
 
         # For accuracy and loss for training/evaluation of model
         self._accuracy = CategoricalAccuracy()
@@ -82,7 +87,9 @@ class FEVERTextClassificationModel(Model):
 
         input_embeddings = torch.cat((cnn_claim_features, cnn_evidence_features), dim=1)
 
-        label_logits = self._feed_forward(input_embeddings)
+        layer_x = self._static_feedforward(input_embeddings)
+
+        label_logits = self._feed_forward(layer_x)
 
         label_probs = F.softmax(label_logits, dim=-1)
 

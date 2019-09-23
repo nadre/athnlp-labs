@@ -4,7 +4,8 @@
     "token_indexers": {
       "tokens": {
         "type": "single_id",
-        "lowercase_tokens": true
+        "lowercase_tokens": true,
+        "token_min_padding_length": 5
       }
     },
     "wiki_tokenizer": {
@@ -29,15 +30,15 @@
         "type": "embedding",
         "pretrained_file": "resources/glove.6B.50d.txt.gz",
         "embedding_dim": 50,
-        "trainable": false
+        "trainable": true
       }
     },
     "final_feedforward": {
       "input_dim": 100,
-      "num_layers": 3,
-      "hidden_dims": [100, 100, 2],
-      "activations": ["relu","relu","linear"],
-      "dropout": 0.0
+      "num_layers": 4,
+      "hidden_dims": [200, 100, 66, 2],
+      "activations": ["relu","relu","relu","linear"],
+      "dropout": 0.1
     },
     "initializer": [
       [".*linear_layers.*weight", {"type": "xavier_normal"}]

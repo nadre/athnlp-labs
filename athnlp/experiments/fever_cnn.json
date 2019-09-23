@@ -4,7 +4,8 @@
     "token_indexers": {
       "tokens": {
         "type": "single_id",
-        "lowercase_tokens": true
+        "lowercase_tokens": false,
+        "token_min_padding_length": 5
       }
     },
     "wiki_tokenizer": {
@@ -27,17 +28,17 @@
     "text_field_embedder": {
       "tokens": {
         "type": "embedding",
-        "pretrained_file": "resources/glove.6B.50d.txt.gz",
-        "embedding_dim": 50,
+        "pretrained_file": "/mnt/raid/data/xuri3814/embeddings/glove.840B.300d.txt.gz",
+        "embedding_dim": 300,
         "trainable": true
       }
     },
     "final_feedforward": {
-      "input_dim": 16,
+      "input_dim": 300,
       "num_layers": 2,
       "hidden_dims": [200, 100],
       "activations": ["relu", "linear"],
-      "dropout": 0.1
+      "dropout": 0.5
     },
     "initializer": [
       [".*linear_layers.*weight", {"type": "xavier_normal"}]
@@ -46,16 +47,25 @@
   "iterator": {
     "type": "bucket",
     "sorting_keys": [["claim", "num_tokens"], ["evidence", "num_tokens"]],
-    "batch_size": 32
+    "batch_size": 128,
+    "instances_per_epoch": 18000
   },
   "trainer": {
-    "num_epochs": 20,
-    "cuda_device": -1,
+    "num_epochs": 300,
+    "cuda_device": 7,
     "validation_metric": "+accuracy",
     "optimizer": {
-      "type": "sgd",
-      "lr": 0.01
-
-    }
+      "type": "adam",
+      "lr": 0.005
+    },
+    "learning_rate_scheduler": {
+       "type":"cosine",
+       "t_initial": 1,
+       "t_mul": 1.666,
+       "eta_min": 0.00001,
+       "eta_mul": 0.99
+    },
+    "should_log_parameter_statistics": true,
+    "should_log_learning_rate": true
   }
 }
