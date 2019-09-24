@@ -18,6 +18,8 @@ from allennlp.nn.beam_search import BeamSearch
 from allennlp.training.metrics import BLEU
 from allennlp.nn.util import masked_softmax
 
+import numpy as np
+
 @Model.register("nmt_seq2seq")
 class NmtSeq2Seq(Model):
     """
@@ -78,7 +80,7 @@ class NmtSeq2Seq(Model):
                  beam_size: int = None,
                  scheduled_sampling_ratio: float = 0.,
                  use_bleu: bool = True,
-                 visualize_attention: bool = False) -> None:
+                 visualize_attention: bool = True) -> None:
         super(NmtSeq2Seq, self).__init__(vocab)
 
         self._scheduled_sampling_ratio = scheduled_sampling_ratio
@@ -408,8 +410,9 @@ class NmtSeq2Seq(Model):
         # shape: (group_size, target_embedding_dim)
         embedded_input = self._target_embedder(last_predictions)
 
-        # TODO: Compute attention right about here...
-        decoder_input = embedded_input
+        context_vector, attention_probs = self._compute_attention(decoder_hidden, encoder_outputs, source_mask)
+
+        decoder_input = torch.cat((embedded_input, context_vector), dim=-1)
 
         # shape (decoder_hidden): (batch_size, decoder_output_dim)
         # shape (decoder_context): (batch_size, decoder_output_dim)
@@ -420,6 +423,7 @@ class NmtSeq2Seq(Model):
         state["decoder_hidden"] = decoder_hidden
         state["decoder_context"] = decoder_context
 
+
         # shape: (group_size, num_classes)
         output_projections = self._output_projection_layer(decoder_hidden)
 
@@ -429,7 +433,7 @@ class NmtSeq2Seq(Model):
     def _compute_attention(self,
                            decoder_hidden_state: torch.LongTensor = None,
                            encoder_outputs: torch.LongTensor = None,
-                           encoder_outputs_mask: torch.LongTensor = None) -> torch.Tensor:
+                           encoder_outputs_mask: torch.LongTensor = None) -> (torch.Tensor, torch.Tensor):
         """Apply attention over encoder outputs and decoder state.
         Parameters
         ----------
@@ -461,9 +465,21 @@ class NmtSeq2Seq(Model):
         # shape: (batch_size, max_input_sequence_length)
         encoder_outputs_mask = encoder_outputs_mask.float()
 
+        attention_weights = encoder_outputs.bmm(decoder_hidden_state.unsqueeze(-1)).squeeze(-1)
+
         # Main body of attention weights computation here
 
-        return None
+        # decoder hidden state 1, 400
+        # encoder outputs 1, 14, 400
+        # encoder_outputs_mask = 1, 14
+
+        attention_probs = masked_softmax(attention_weights, encoder_outputs_mask)
+        # attention weights = 1, 14
+
+        context_vector = util.weighted_sum(encoder_outputs, attention_probs)
+
+        return context_vector, attention_probs
+
 
     @staticmethod
     def _get_loss(logits: torch.LongTensor,

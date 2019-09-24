@@ -33,9 +33,9 @@
       }
     },
     "target_namespace": "target_tokens",
-//    "attention" : {
-//      "type" : "dot_product"
-//    },
+    "attention" : {
+      "type" : "dot_product"
+    },
     "encoder": {
       "type": "lstm",
       "input_size": 50,
@@ -46,7 +46,7 @@
     },
     "decoder": {
       "type": "lstm",
-      "input_size": 50,
+      "input_size": 450,
       "hidden_size": 400
     },
     "max_decoding_steps": 15,
