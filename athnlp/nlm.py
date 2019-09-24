@@ -1,9 +1,12 @@
 import argparse
 import math
 import time
+import numpy as np
 
 import torch
+import torch.nn as nn
 
+from athnlp.models.rnn_language_model import RNNModel
 from athnlp.readers.lm_corpus import Corpus
 
 parser = argparse.ArgumentParser(description='RNN/LSTM Language Model')
@@ -11,7 +14,7 @@ parser.add_argument('--data', type=str, default='data/lm',
                     help='location of the data corpus')
 parser.add_argument('--model_type', type=str, default='LSTM',
                     help='type of recurrent net (RNN_TANH, RNN_RELU, LSTM, GRU)')
-parser.add_argument("--model_path", type=str, default='models/lm/default.pt',
+parser.add_argument("--model_path", type=str, default='data/lm/models/default.pt',
                     help='Path where to store the trained language model.')
 parser.add_argument('--emsize', type=int, default=50,
                     help='size of word embeddings')
@@ -140,6 +143,7 @@ def train(model, criterion, corpus, train_data, lr, bptt, epoch):
     total_loss = 0.
     start_time = time.time()
     ntokens = len(corpus.dictionary)
+    optimizer = torch.optim.SGD(model.parameters(), lr=lr)
     hidden = model.init_hidden(args.batch_size)
     for batch, i in enumerate(range(0, train_data.size(0) - 1, args.bptt)):
         data, targets = get_batch(train_data, i, bptt)
@@ -147,15 +151,18 @@ def train(model, criterion, corpus, train_data, lr, bptt, epoch):
         # If we didn't, the model would try backpropagating all the way to start of the dataset.
         model.zero_grad()
         hidden = repackage_hidden(hidden)
-        # TODO: run model forward pass obtaining '(output, hidden)'
-        output, hidden = None, None
+
+        output, hidden = model(data, hidden)
+
         # TODO: compute loss using the defined criterion obtaining 'loss'.
-        loss = None
+        loss = criterion(output.view(-1, ntokens), targets)
+
         # TODO: compute backpropagation calling the backward pass
+        loss.backward()
 
         # TODO (optional): implement gradient clipping to prevent
-        # the exploding gradient problem in RNNs / LSTMs
-        # check the PyTorch function `clip_grad_norm`
+        torch.nn.utils.clip_grad_norm_(model.parameters(), args.clip)
+        optimizer.step()
 
         total_loss += loss.item()
 
@@ -199,9 +206,13 @@ def main(args):
         ###############################################################################
         # Build the model
         ###############################################################################
-        # TODO: model definition and loss definition
-        model = None
-        criterion = None
+        model = RNNModel(rnn_type=args.model_type,
+                         ntoken=corpus.dictionary.__len__(),
+                         ninp=args.emsize,
+                         nhid=args.nhid,
+                         nlayers=args.nlayers)
+
+        criterion = nn.CrossEntropyLoss()
 
         # Loop over epochs.
         lr = args.lr
@@ -245,7 +256,6 @@ def main(args):
         print('=' * 89)
     else:
         # we enabled the sentence completition mode
-
         # we first load the model
         # Load the best saved model.
         with open(args.model_path, 'rb') as f:
@@ -253,11 +263,13 @@ def main(args):
             # after load the rnn params are not a continuous chunk of memory
             # this makes them a continuous chunk, and will speed up forward pass
             model.rnn.flatten_parameters()
+            test_string = 'the thief arrested the cop .'
+            print(test_string)
+            seq = [corpus.dictionary.word2idx[w] for w in test_string.split()]
+            model.predict(seq, torch.Tensor(100))
 
-        ###############################################################################
-        # Use the pretrained LM at inference time
-        ###############################################################################
-        # TODO: Sentence completion solution
+
+
 
 
 if __name__ == "__main__":

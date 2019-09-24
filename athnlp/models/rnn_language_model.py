@@ -1,6 +1,5 @@
 import torch.nn as nn
 
-
 class RNNModel(nn.Module):
     """Container module with an encoder, a recurrent module, and a decoder."""
 
@@ -57,7 +56,14 @@ class RNNModel(nn.Module):
         :param hidden: previous hidden state of the RNN language model
         :return: output of the model
         """
-        pass
+
+        embeddings = self.encoder(input)
+
+        output, hidden = self.rnn(embeddings, hidden)
+
+        logits = self.decoder(output)
+
+        return logits, hidden
 
     def init_hidden(self, bsz):
         """
