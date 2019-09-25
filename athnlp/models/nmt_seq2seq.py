@@ -20,6 +20,7 @@ from allennlp.nn.util import masked_softmax
 
 import numpy as np
 
+
 @Model.register("nmt_seq2seq")
 class NmtSeq2Seq(Model):
     """
@@ -91,7 +92,8 @@ class NmtSeq2Seq(Model):
         self._end_index = self.vocab.get_token_index(END_SYMBOL, self._target_namespace)
 
         if use_bleu:
-            pad_index = self.vocab.get_token_index(self.vocab._padding_token, self._target_namespace)  # pylint: disable=protected-access
+            pad_index = self.vocab.get_token_index(self.vocab._padding_token,
+                                                   self._target_namespace)  # pylint: disable=protected-access
             self._bleu = BLEU(exclude_indices={pad_index, self._end_index, self._start_index})
         else:
             self._bleu = None
@@ -226,8 +228,8 @@ class NmtSeq2Seq(Model):
                 # shape: (batch_size, beam_size, max_sequence_length)
                 top_k_predictions = output_dict["predictions"]
                 # shape: (batch_size, max_predicted_sequence_length)
-                best_predictions = top_k_predictions[:, 0, :]
-                self._bleu(best_predictions, target_tokens[self._target_namespace])
+                #best_predictions = top_k_predictions[:, 0, :]
+                self._bleu(top_k_predictions, target_tokens[self._target_namespace])
 
         return output_dict
 
@@ -270,17 +272,17 @@ class NmtSeq2Seq(Model):
         # shape: (batch_size, max_input_sequence_length, encoder_output_dim)
         encoder_outputs = self._encoder(embedded_input, source_mask)
         return {
-                "source_mask": source_mask,
-                "encoder_outputs": encoder_outputs,
+            "source_mask": source_mask,
+            "encoder_outputs": encoder_outputs,
         }
 
     def _init_decoder_state(self, state: Dict[str, torch.Tensor]) -> Dict[str, torch.Tensor]:
         batch_size = state["source_mask"].size(0)
         # shape: (batch_size, encoder_output_dim)
         final_encoder_output = util.get_final_encoder_states(
-                state["encoder_outputs"],
-                state["source_mask"],
-                self._encoder.is_bidirectional())
+            state["encoder_outputs"],
+            state["source_mask"],
+            self._encoder.is_bidirectional())
         # Initialize the decoder hidden state with the final output of the encoder.
         # shape: (batch_size, decoder_output_dim)
         state["decoder_hidden"] = final_encoder_output
@@ -322,6 +324,7 @@ class NmtSeq2Seq(Model):
 
         step_logits: List[torch.Tensor] = []
         step_predictions: List[torch.Tensor] = []
+        attention_probs_per_timestep = []
 
         for timestep in range(num_decoding_steps):
             if self.training and torch.rand(1).item() < self._scheduled_sampling_ratio:
@@ -337,7 +340,9 @@ class NmtSeq2Seq(Model):
                 input_choices = targets[:, timestep]
 
             # shape: (batch_size, num_classes)
-            output_projections, state = self._prepare_output_projections(input_choices, state)
+            output_projections, state, attention_probs = self._prepare_output_projections(input_choices, state)
+
+            attention_probs_per_timestep.append(attention_probs)
 
             # list of tensors, shape: (batch_size, 1, num_classes)
             step_logits.append(output_projections.unsqueeze(1))
@@ -356,7 +361,10 @@ class NmtSeq2Seq(Model):
         # shape: (batch_size, num_decoding_steps)
         predictions = torch.cat(step_predictions, 1)
 
-        output_dict = {"predictions": predictions}
+        output_dict = {
+            "predictions": predictions,
+            "attention_probs_per_timestep": attention_probs_per_timestep
+        }
 
         if target_tokens:
             # shape: (batch_size, num_decoding_steps, num_classes)
@@ -377,17 +385,18 @@ class NmtSeq2Seq(Model):
         # shape (all_top_k_predictions): (batch_size, beam_size, num_decoding_steps)
         # shape (log_probabilities): (batch_size, beam_size)
         all_top_k_predictions, log_probabilities = self._beam_search.search(
-                start_predictions, state, self.take_step)
+            start_predictions, state, self.take_step)
 
         output_dict = {
-                "class_log_probabilities": log_probabilities,
-                "predictions": all_top_k_predictions,
+            "class_log_probabilities": log_probabilities,
+            "predictions": all_top_k_predictions,
         }
         return output_dict
 
     def _prepare_output_projections(self,
                                     last_predictions: torch.Tensor,
-                                    state: Dict[str, torch.Tensor]) -> Tuple[torch.Tensor, Dict[str, torch.Tensor]]:  # pylint: disable=line-too-long
+                                    state: Dict[str, torch.Tensor]) -> Tuple[
+        torch.Tensor, Dict[str, torch.Tensor], torch.Tensor]:  # pylint: disable=line-too-long
         """
         Decode current state and last prediction to produce projections
         into the target space, which can then be used to get probabilities of
@@ -417,19 +426,17 @@ class NmtSeq2Seq(Model):
         # shape (decoder_hidden): (batch_size, decoder_output_dim)
         # shape (decoder_context): (batch_size, decoder_output_dim)
         decoder_hidden, decoder_context = self._decoder_cell(
-                decoder_input,
-                (decoder_hidden, decoder_context))
+            decoder_input,
+            (decoder_hidden, decoder_context))
 
         state["decoder_hidden"] = decoder_hidden
         state["decoder_context"] = decoder_context
 
-
         # shape: (group_size, num_classes)
         output_projections = self._output_projection_layer(decoder_hidden)
 
-        return output_projections, state
+        return output_projections, state, attention_probs
 
-    # TODO: Implement attention mechanisms here
     def _compute_attention(self,
                            decoder_hidden_state: torch.LongTensor = None,
                            encoder_outputs: torch.LongTensor = None,
@@ -451,7 +458,7 @@ class NmtSeq2Seq(Model):
 
         Returns
         -------
-        torch.Tensor
+        (torch.Tensor, torch.Tensor)
             A tensor of shape (batch_size, encoder_output_dim) that contains the attended encoder outputs (aka context vector),
             i.e., we have ``applied`` the attention scores on the encoder hidden states.
 
@@ -479,7 +486,6 @@ class NmtSeq2Seq(Model):
         context_vector = util.weighted_sum(encoder_outputs, attention_probs)
 
         return context_vector, attention_probs
-
 
     @staticmethod
     def _get_loss(logits: torch.LongTensor,
