@@ -19,6 +19,8 @@ from allennlp.training.metrics import BLEU
 from allennlp.nn.util import masked_softmax
 
 import numpy as np
+import matplotlib.pylab as plt
+import matplotlib.ticker as ticker
 
 
 @Model.register("nmt_seq2seq")
@@ -179,7 +181,7 @@ class NmtSeq2Seq(Model):
             for each source sentence in the batch.
         """
         # shape: (group_size, num_classes)
-        output_projections, state = self._prepare_output_projections(last_predictions, state)
+        output_projections, state, attention_probs = self._prepare_output_projections(last_predictions, state)
 
         # shape: (group_size, num_classes)
         class_log_probabilities = F.log_softmax(output_projections, dim=-1)
@@ -221,6 +223,14 @@ class NmtSeq2Seq(Model):
             state = self._init_decoder_state(state)
             if self._visualize_attention:
                 output_dict = self._forward_loop(state, target_tokens)
+                attention_matrix = np.array([np.array(x.view(-1)) for x in output_dict['attention_probs_per_timestep']])
+                in_seq = [self.vocab._index_to_token['source_tokens'][x] for x in
+                          source_tokens['source_tokens'].view(-1).data.numpy()]
+                out_seq = [self.vocab._index_to_token['target_tokens'][x] for x in
+                          target_tokens['target_tokens'].view(-1).data.numpy()]
+
+                plot_attention(attention_matrix, in_seq, out_seq, 'attention_plots/'+'_'.join(in_seq[1:4]))
+
             else:
                 predictions = self._forward_beam_search(state)
                 output_dict.update(predictions)
@@ -530,3 +540,20 @@ class NmtSeq2Seq(Model):
         if self._bleu and not self.training:
             all_metrics.update(self._bleu.get_metric(reset=reset))
         return all_metrics
+
+
+def plot_attention(attention, sentence, predicted_sentence, save_path):
+    # https://www.tensorflow.org/beta/tutorials/text/nmt_with_attention
+    fig = plt.figure(figsize=(10,10))
+    ax = fig.add_subplot(1, 1, 1)
+    ax.matshow(attention, cmap='viridis')
+
+    fontdict = {'fontsize': 14}
+
+    ax.set_xticklabels([''] + sentence, fontdict=fontdict, rotation=90)
+    ax.set_yticklabels([''] + predicted_sentence, fontdict=fontdict)
+
+    ax.xaxis.set_major_locator(ticker.MultipleLocator(1))
+    ax.yaxis.set_major_locator(ticker.MultipleLocator(1))
+
+    plt.savefig(save_path, bbox_inches='tight')
